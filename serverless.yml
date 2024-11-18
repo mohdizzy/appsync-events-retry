@@ -1,0 +1,202 @@
+# Service name
+service: events-api
+
+# Serverless Plugins declaration.
+plugins:
+  - serverless-esbuild
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  architecture: x86_64
+  region: ${opt:region, "eu-west-1"}
+  stage: ${opt:stage, "int"}
+  stackName: ${self:service}-${self:provider.stage}-stack
+  timeout: 45
+  environment:
+    PAYLOAD_BUCKET: !Ref PayloadBucket
+    API_KEY: XXX # DON'T DO THIS! USE AWS SECRET MANAGER.
+    HTTP_ENDPOINT: !GetAtt EventsAPI.Dns.Http
+    REALTIME_ENDPOINT: !GetAtt EventsAPI.Dns.Realtime
+    SERVICE_ROLE: !GetAtt GenericServiceRole.Arn
+
+  tracing:
+    lambda: true
+
+custom:
+  base: ${self:service}-${self:provider.stage}
+  esbuild:
+    bundle: true
+    minify: false
+    target: node20
+
+functions:
+  publisher:
+    name: events-publisher
+    description: "Lambda Function for pubishing events to a channel of the events API"
+    handler: cityIndex.handler
+    role: GenericServiceRole
+    timeout: 30
+    memorySize: 256    
+    environment:
+      RETRIER_LAMBDA: arn:aws:iam::${aws:accountId}:role/event-retry
+
+  acknowledger:
+    name: event-ack
+    description: "Lambda Function for removing Schedules from Eventbridge"
+    handler: cityAcknowledge.handler
+    role: GenericServiceRole
+    timeout: 30
+    memorySize: 256
+
+  retrier:
+    name: event-retry
+    description: "Lambda Function for retrying events whose ack is not received from client"
+    handler: cityRetry.handler
+    role: GenericServiceRole
+    timeout: 30
+    memorySize: 256    
+
+# IAM-Roles and Policy
+resources:
+  Resources:
+    GenericServiceRole: # Ideally, one role per Lambda for least privilege principle
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName: ${self:service}-role
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action:
+                - "sts:AssumeRole"
+            - Effect: Allow
+              Principal:
+                Service:
+                  - scheduler.amazonaws.com
+              Action:
+                - sts:AssumeRole     
+            - Effect: Allow
+              Principal:
+                Service:
+                  - appsync.amazonaws.com
+              Action:
+                - sts:AssumeRole                                
+        Policies:
+          - PolicyName: ${self:custom.base}-policy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:invokeFunction
+                  Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - s3:Put*
+                  Resource:
+                    - arn:aws:s3:::${self:custom.params.EXTENSION_LOG_DESTINATION_S3_BUCKET_NAME }
+                    - arn:aws:s3:::${self:custom.params.EXTENSION_LOG_DESTINATION_S3_BUCKET_NAME }/*
+                # - Effect: Allow
+                #   Action:
+                #     - kafka:GetBootstrapBrokers
+                #     - kafka:DescribeCluster
+                #   Resource: "*"
+                # - Effect: Allow
+                #   Action:
+                #     - kafka-cluster:WriteData
+                #     - kafka-cluster:ReadData
+                #     - kafka-cluster:Connect
+                #     - kafka-cluster:DescribeGroup
+                #     - kafka-cluster:DescribeTopic
+                #     - kafka-cluster:ReadData
+                #     - kafka-cluster:AlterGroup
+                #     - kafka-cluster:DescribeClusterDynamicConfiguration
+                #     - kafka-cluster:DescribeTopicDynamicConfiguration
+                #     - kafka-cluster:DescribeCluster
+                #   Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                    - sqs:ReceiveMessage
+                    - sqs:DeleteMessage
+                    - sqs:GetQueueAttributes
+                  Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - scheduler:CreateSchedule
+                    - scheduler:DeleteSchedule
+                    - scheduler:GetSchedule
+                  Resource: "*"
+                # - Effect: Allow
+                #   Action:
+                #     - ec2:CreateNetworkInterface
+                #     - ec2:DescribeNetworkInterfaces
+                #     - ec2:DeleteNetworkInterface
+                #     - ec2:DescribeInstances
+                #     - ec2:AttachNetworkInterface
+                #     - ec2:DescribeSecurityGroups
+                #     - ec2:DescribeVpcs
+                #     - ec2:DescribeSubnets
+                #   Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:PutLogEvents
+                  Resource: "*"
+
+    # cityTable:
+    #   Type: AWS::DynamoDB::Table
+    #   Properties:
+    #     AttributeDefinitions:
+    #       - AttributeName: airportCode
+    #         AttributeType: S
+    #       - AttributeName: countryCode
+    #         AttributeType: S
+    #     KeySchema:
+    #       - KeyType: HASH
+    #         AttributeName: airportCode
+    #       - KeyType: RANGE
+    #         AttributeName: countryCode
+    #     BillingMode: PAY_PER_REQUEST
+    #     TableName: ${self:service}
+
+    PayloadBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-bucket
+        AccessControl: Private
+        VersioningConfiguration:
+          Status: Enabled
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+
+    EventsAPI:
+      Type: AWS::AppSync::Api
+      Properties:
+        EventConfig: 
+          AuthProviders: 
+            - AuthType: API_KEY
+          ConnectionAuthModes: 
+            - AuthType: API_KEY
+          DefaultPublishAuthModes: 
+            - AuthType: API_KEY
+          DefaultSubscribeAuthModes: 
+            - AuthType: API_KEY
+          LogConfig: 
+              CloudWatchLogsRoleArn: !GetAtt [LambdaRole, Arn]
+              LogLevel: ALL
+        Name: events-api-poc
+
+    EventsNamespace:
+      Type: AWS::AppSync::ChannelNamespace
+      Properties:
+        ApiId: !Ref EventsAPI.ApiId
+        Name: new-updates
