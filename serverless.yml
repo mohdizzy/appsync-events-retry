@@ -29,13 +29,13 @@ custom:
   esbuild:
     bundle: true
     minify: false
-    target: node20
+    target: node18
 
 functions:
   publisher:
     name: events-publisher
     description: "Lambda Function for pubishing events to a channel of the events API"
-    handler: cityIndex.handler
+    handler: src/handlers/publisher/index.handler
     role: GenericServiceRole
     timeout: 30
     memorySize: 256
@@ -45,7 +45,7 @@ functions:
   acknowledger:
     name: event-ack
     description: "Lambda Function for removing Schedules from Eventbridge"
-    handler: cityAcknowledge.handler
+    handler: src/handlers/acknowledger/index.handler
     role: GenericServiceRole
     timeout: 30
     memorySize: 256
@@ -57,7 +57,7 @@ functions:
   retrier:
     name: event-retry
     description: "Lambda Function for retrying events whose ack is not received from client"
-    handler: cityRetry.handler
+    handler: src/handlers/retry/index.handler
     role: GenericServiceRole
     timeout: 30
     memorySize: 256
@@ -91,7 +91,7 @@ resources:
               Action:
                 - sts:AssumeRole
         Policies:
-          - PolicyName: ${self:custom.base}-policy
+          - PolicyName: ${self:service}-policy
             PolicyDocument:
               Version: "2012-10-17"
               Statement:
@@ -102,9 +102,10 @@ resources:
                 - Effect: Allow
                   Action:
                     - s3:Put*
+                    - s3:Get*
                   Resource:
-                    - arn:aws:s3:::${self:custom.params.EXTENSION_LOG_DESTINATION_S3_BUCKET_NAME }
-                    - arn:aws:s3:::${self:custom.params.EXTENSION_LOG_DESTINATION_S3_BUCKET_NAME }/*
+                    - arn:aws:s3:::${self:service}-bucket
+                    - arn:aws:s3:::${self:service}-bucket/*
                 # - Effect: Allow
                 #   Action:
                 #     - kafka:GetBootstrapBrokers
@@ -173,7 +174,7 @@ resources:
     PayloadBucket:
       Type: AWS::S3::Bucket
       Properties:
-        BucketName: ${self:service}-bucket
+        BucketName: ${self:service}-poc-bucket
         AccessControl: Private
         VersioningConfiguration:
           Status: Enabled
@@ -196,12 +197,38 @@ resources:
           DefaultSubscribeAuthModes:
             - AuthType: API_KEY
           LogConfig:
-            CloudWatchLogsRoleArn: !GetAtt [LambdaRole, Arn]
+            CloudWatchLogsRoleArn: !GetAtt GenericServiceRole.Arn
             LogLevel: ALL
         Name: events-api-poc
 
     EventsNamespace:
       Type: AWS::AppSync::ChannelNamespace
       Properties:
-        ApiId: !Ref EventsAPI.ApiId
+        ApiId: !GetAtt EventsAPI.ApiId
         Name: new-updates
+
+    # enable JSON structured logging for all Lambdas (for Serverless V3)
+    
+    PublisherLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        LoggingConfig:
+          LogFormat: JSON
+          ApplicationLogLevel: WARN
+          SystemLogLevel: INFO
+
+    AcknowledgerLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        LoggingConfig:
+          LogFormat: JSON
+          ApplicationLogLevel: WARN
+          SystemLogLevel: INFO
+
+    RetrierLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        LoggingConfig:
+          LogFormat: JSON
+          ApplicationLogLevel: WARN
+          SystemLogLevel: INFO                            

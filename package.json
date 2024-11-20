@@ -1,20 +1,22 @@
 {
-  "name": "appsync-events-retry",
-  "version": "1.0.0",
-  "description": "Service for guaranteeing payload deliveries with Web sockets using AppSync Events API",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "serverless": "^4.4.10"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.693.0",
-    "@aws-sdk/client-scheduler": "^3.693.0",
-    "uuid": "^11.0.3",
-    "logger": "git+https://github.com/serverless-guru/logger-typescript.git"
-  }
+	"name": "appsync-events-retry",
+	"version": "1.0.0",
+	"description": "Service for guaranteeing payload deliveries with Web sockets using AppSync Events API",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"author": "",
+	"license": "ISC",
+	"devDependencies": {
+		"serverless": "^4.4.10",
+		"serverless-esbuild": "^1.54.5"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.693.0",
+		"@aws-sdk/client-scheduler": "^3.693.0",
+		"@serverless-guru/logger": "^1.0.5",
+		"esbuild": "^0.24.0",
+		"uuid": "^11.0.3"
+	}
 }

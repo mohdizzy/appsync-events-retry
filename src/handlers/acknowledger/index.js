@@ -1,13 +1,20 @@
-const {
-  SchedulerClient,
-  CreateScheduleCommand,
-  FlexibleTimeWindowMode,
-  ActionAfterCompletion,
-} = require("@aws-sdk/client-scheduler");
+const { logger } = require("../../utils/logger");
+const { deleteSchedule } = require("./remove-schedule");
 
 exports.handler = async (event, context) => {
-  console.log("Event :", event);
-  const eventID = event.detail.eventID;
+	logger.info("Acknowledger started", event);
 
-  //remove event from scheduler
+	try {
+		const eventId =
+			typeof event.body === "string"
+				? JSON.parse(event.body).eventId
+				: event.body.eventId;
+
+		//remove event from scheduler
+		await deleteSchedule(eventId);
+
+		logger.info("Acknowledger completed");
+	} catch (error) {
+		logger.error("Something went wrong", error);
+	}
 };
