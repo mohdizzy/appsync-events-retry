@@ -15,7 +15,7 @@ provider:
   timeout: 45
   environment:
     PAYLOAD_BUCKET: !Ref PayloadBucket
-    API_KEY: XXX # DON'T DO THIS! USE AWS SECRET MANAGER.
+    API_KEY: !GetAtt EventsAPIKey.ApiKey # DON'T DO THIS! USE AWS SECRET MANAGER.
     HTTP_ENDPOINT: !GetAtt EventsAPI.Dns.Http
     REALTIME_ENDPOINT: !GetAtt EventsAPI.Dns.Realtime
     SERVICE_ROLE: !GetAtt GenericServiceRole.Arn
@@ -23,6 +23,8 @@ provider:
 
   tracing:
     lambda: true
+package:
+  individually: true
 
 custom:
   base: ${self:service}-${self:provider.stage}
@@ -40,7 +42,7 @@ functions:
     timeout: 30
     memorySize: 256
     environment:
-      RETRIER_LAMBDA: arn:aws:iam::${aws:accountId}:role/event-retry
+      RETRIER_LAMBDA: arn:aws:lambda:${self:provider.region}:${aws:accountId}:function:event-retry
 
   acknowledger:
     name: event-ack
@@ -65,7 +67,9 @@ functions:
 # IAM-Roles and Policy
 resources:
   Resources:
-    GenericServiceRole: # Ideally, one role per Lambda for least privilege principle
+    # Ideally, one role per Lambda for least privilege principle
+    # Do not use wildcards for permissions
+    GenericServiceRole:
       Type: "AWS::IAM::Role"
       Properties:
         RoleName: ${self:service}-role
@@ -97,15 +101,20 @@ resources:
               Statement:
                 - Effect: Allow
                   Action:
-                    - lambda:invokeFunction
+                    - iam:PassRole
+                  Resource: "*"
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
                   Resource: "*"
                 - Effect: Allow
                   Action:
                     - s3:Put*
                     - s3:Get*
+                    - s3:List*
                   Resource:
-                    - arn:aws:s3:::${self:service}-bucket
-                    - arn:aws:s3:::${self:service}-bucket/*
+                    - !Join ["", ["arn:aws:s3:::", !Ref PayloadBucket]]
+                    - !Join ["", ["arn:aws:s3:::", !Ref PayloadBucket, "/*"]]
                 # - Effect: Allow
                 #   Action:
                 #     - kafka:GetBootstrapBrokers
@@ -155,22 +164,6 @@ resources:
                     - logs:PutLogEvents
                   Resource: "*"
 
-    # cityTable:
-    #   Type: AWS::DynamoDB::Table
-    #   Properties:
-    #     AttributeDefinitions:
-    #       - AttributeName: airportCode
-    #         AttributeType: S
-    #       - AttributeName: countryCode
-    #         AttributeType: S
-    #     KeySchema:
-    #       - KeyType: HASH
-    #         AttributeName: airportCode
-    #       - KeyType: RANGE
-    #         AttributeName: countryCode
-    #     BillingMode: PAY_PER_REQUEST
-    #     TableName: ${self:service}
-
     PayloadBucket:
       Type: AWS::S3::Bucket
       Properties:
@@ -183,6 +176,11 @@ resources:
           BlockPublicPolicy: true
           IgnorePublicAcls: true
           RestrictPublicBuckets: true
+          # LifecycleConfiguration:
+          #   Rules:
+          #     - Id: DeleteOldObjects
+          #       Status: Enabled
+          #       ExpirationInDays: 1
 
     EventsAPI:
       Type: AWS::AppSync::Api
@@ -201,6 +199,12 @@ resources:
             LogLevel: ALL
         Name: events-api-poc
 
+    EventsAPIKey:
+      Type: AWS::AppSync::ApiKey
+      Properties:
+        ApiId: !GetAtt EventsAPI.ApiId
+        Expires: 1733011200
+
     EventsNamespace:
       Type: AWS::AppSync::ChannelNamespace
       Properties:
@@ -208,13 +212,12 @@ resources:
         Name: new-updates
 
     # enable JSON structured logging for all Lambdas (for Serverless V3)
-    
     PublisherLambdaFunction:
       Type: AWS::Lambda::Function
       Properties:
         LoggingConfig:
           LogFormat: JSON
-          ApplicationLogLevel: WARN
+          ApplicationLogLevel: INFO
           SystemLogLevel: INFO
 
     AcknowledgerLambdaFunction:
@@ -222,7 +225,7 @@ resources:
       Properties:
         LoggingConfig:
           LogFormat: JSON
-          ApplicationLogLevel: WARN
+          ApplicationLogLevel: INFO
           SystemLogLevel: INFO
 
     RetrierLambdaFunction:
@@ -230,5 +233,5 @@ resources:
       Properties:
         LoggingConfig:
           LogFormat: JSON
-          ApplicationLogLevel: WARN
-          SystemLogLevel: INFO                            
+          ApplicationLogLevel: INFO
+          SystemLogLevel: INFO
