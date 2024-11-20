@@ -19,6 +19,7 @@ provider:
     HTTP_ENDPOINT: !GetAtt EventsAPI.Dns.Http
     REALTIME_ENDPOINT: !GetAtt EventsAPI.Dns.Realtime
     SERVICE_ROLE: !GetAtt GenericServiceRole.Arn
+    CHANNEL_NAMESPACE: !Ref EventsNamespace
 
   tracing:
     lambda: true
@@ -37,7 +38,7 @@ functions:
     handler: cityIndex.handler
     role: GenericServiceRole
     timeout: 30
-    memorySize: 256    
+    memorySize: 256
     environment:
       RETRIER_LAMBDA: arn:aws:iam::${aws:accountId}:role/event-retry
 
@@ -48,6 +49,10 @@ functions:
     role: GenericServiceRole
     timeout: 30
     memorySize: 256
+    events:
+      - httpApi:
+          method: POST
+          path: /ack
 
   retrier:
     name: event-retry
@@ -55,7 +60,7 @@ functions:
     handler: cityRetry.handler
     role: GenericServiceRole
     timeout: 30
-    memorySize: 256    
+    memorySize: 256
 
 # IAM-Roles and Policy
 resources:
@@ -78,13 +83,13 @@ resources:
                 Service:
                   - scheduler.amazonaws.com
               Action:
-                - sts:AssumeRole     
+                - sts:AssumeRole
             - Effect: Allow
               Principal:
                 Service:
                   - appsync.amazonaws.com
               Action:
-                - sts:AssumeRole                                
+                - sts:AssumeRole
         Policies:
           - PolicyName: ${self:custom.base}-policy
             PolicyDocument:
@@ -181,18 +186,18 @@ resources:
     EventsAPI:
       Type: AWS::AppSync::Api
       Properties:
-        EventConfig: 
-          AuthProviders: 
+        EventConfig:
+          AuthProviders:
             - AuthType: API_KEY
-          ConnectionAuthModes: 
+          ConnectionAuthModes:
             - AuthType: API_KEY
-          DefaultPublishAuthModes: 
+          DefaultPublishAuthModes:
             - AuthType: API_KEY
-          DefaultSubscribeAuthModes: 
+          DefaultSubscribeAuthModes:
             - AuthType: API_KEY
-          LogConfig: 
-              CloudWatchLogsRoleArn: !GetAtt [LambdaRole, Arn]
-              LogLevel: ALL
+          LogConfig:
+            CloudWatchLogsRoleArn: !GetAtt [LambdaRole, Arn]
+            LogLevel: ALL
         Name: events-api-poc
 
     EventsNamespace:
