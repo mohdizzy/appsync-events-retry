@@ -35,7 +35,7 @@ custom:
 
 functions:
   publisher:
-    name: events-publisher
+    name: event-publisher
     description: "Lambda Function for pubishing events to a channel of the events API"
     handler: src/handlers/publisher/index.handler
     role: GenericServiceRole
@@ -115,48 +115,12 @@ resources:
                   Resource:
                     - !Join ["", ["arn:aws:s3:::", !Ref PayloadBucket]]
                     - !Join ["", ["arn:aws:s3:::", !Ref PayloadBucket, "/*"]]
-                # - Effect: Allow
-                #   Action:
-                #     - kafka:GetBootstrapBrokers
-                #     - kafka:DescribeCluster
-                #   Resource: "*"
-                # - Effect: Allow
-                #   Action:
-                #     - kafka-cluster:WriteData
-                #     - kafka-cluster:ReadData
-                #     - kafka-cluster:Connect
-                #     - kafka-cluster:DescribeGroup
-                #     - kafka-cluster:DescribeTopic
-                #     - kafka-cluster:ReadData
-                #     - kafka-cluster:AlterGroup
-                #     - kafka-cluster:DescribeClusterDynamicConfiguration
-                #     - kafka-cluster:DescribeTopicDynamicConfiguration
-                #     - kafka-cluster:DescribeCluster
-                #   Resource: "*"
-                - Effect: Allow
-                  Action:
-                    - sqs:SendMessage
-                    - sqs:ReceiveMessage
-                    - sqs:DeleteMessage
-                    - sqs:GetQueueAttributes
-                  Resource: "*"
                 - Effect: Allow
                   Action:
                     - scheduler:CreateSchedule
                     - scheduler:DeleteSchedule
                     - scheduler:GetSchedule
                   Resource: "*"
-                # - Effect: Allow
-                #   Action:
-                #     - ec2:CreateNetworkInterface
-                #     - ec2:DescribeNetworkInterfaces
-                #     - ec2:DeleteNetworkInterface
-                #     - ec2:DescribeInstances
-                #     - ec2:AttachNetworkInterface
-                #     - ec2:DescribeSecurityGroups
-                #     - ec2:DescribeVpcs
-                #     - ec2:DescribeSubnets
-                #   Resource: "*"
                 - Effect: Allow
                   Action:
                     - logs:CreateLogStream
@@ -176,11 +140,11 @@ resources:
           BlockPublicPolicy: true
           IgnorePublicAcls: true
           RestrictPublicBuckets: true
-          # LifecycleConfiguration:
-          #   Rules:
-          #     - Id: DeleteOldObjects
-          #       Status: Enabled
-          #       ExpirationInDays: 1
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldObjects
+              Status: Enabled
+              ExpirationInDays: 1
 
     EventsAPI:
       Type: AWS::AppSync::Api
